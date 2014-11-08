@@ -171,32 +171,36 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	}
 
 	/*
-	 * if empty, do nothing if no .com, wrong if www.something.com, add http://
+	 * if empty, do nothing
+	 * if no .com, wrong
+	 * if www.something.com, add http://
 	 * if something.com, add http://www.
 	 */
 
 	public void goLoad() {
 		progressBar.setVisible(true);
 		progressBar.setIndeterminate(true);
-		
+
 		// thread thingy for progress bar animation
 		class MyWorker extends SwingWorker<String, Void> {
-			
+
 			// while progress bar is moving, render the page
 			protected String doInBackground() {
+				// basic page rendering --> main goal
 				String url = txtUrlField.getText();
 				try {
 					editorPane.setPage(url);
 				} catch (IOException e) {
 					e.printStackTrace();
+					isDoneLoad = true;
 					editorPane.setText("Error: " + e);
 				}
 
-				// wait until page has fully rendered
+				// for valid page: wait until page has fully rendered
 				// refer to editorPane.addPropertyChangeListener() in initGUI()
 				while (!isDoneLoad)
 					lblStatus.setText("Loading");
-				
+
 				return "Done";
 			}
 
