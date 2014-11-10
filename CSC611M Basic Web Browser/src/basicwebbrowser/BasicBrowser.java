@@ -198,6 +198,11 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	 * @return url if valid, empty if invalid
 	 */
 	private String checkURL(String url) {
+		
+		// Simple workaround for custom ports -- don't check if valid url
+		if (url.contains("8080"))
+			return url;
+		
 		String[] schemes = {"http","https"};
 		UrlValidator urlValidator = new UrlValidator(schemes);
 		if (urlValidator.isValid(url))
