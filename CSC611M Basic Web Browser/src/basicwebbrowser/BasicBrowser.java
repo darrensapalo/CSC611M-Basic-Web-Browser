@@ -11,8 +11,16 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.net.Socket;
 import java.util.Stack;
+import java.util.concurrent.Semaphore;
 
 import javax.swing.JButton;
 import javax.swing.JEditorPane;
@@ -37,7 +45,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	private JEditorPane editorPane;
 	private JLabel lblStatus;
 	private JProgressBar progressBar;
-
+	private Semaphore wait = new Semaphore(0);
 	/**
 	 * Flag for checking if page has fully rendered
 	 */
@@ -46,12 +54,23 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	private Stack<String> fwrdStack = new Stack<String>();
 	private String title = "Basic Web Browser";
 	private String myURL;
+	private long startTime;
 
 	/**
 	 * Create the frame.
 	 */
 	public BasicBrowser() {
 		initGUI();
+	}
+	
+	public BasicBrowser(String url){
+		initGUI();
+		// txtUrlField.setText(url);
+		startTime = System.nanoTime();
+		// System.out.println("Start time: " + startTime);
+		showPage(url);
+		// goLoad(url);
+		
 	}
 
 	private void initGUI() {
@@ -95,8 +114,8 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		txtUrlField.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyReleased(KeyEvent e) {
-				if (e.getKeyCode() == KeyEvent.VK_ENTER)
-					goLoad();
+//				if (e.getKeyCode() == KeyEvent.VK_ENTER)
+					//goLoad();
 			}
 		});
 		txtUrlField.addFocusListener(new FocusListener() {
@@ -122,7 +141,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		btnGo.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				goLoad();
+//				goLoad();
 			}
 		});
 		pnlMain.add(btnGo);
@@ -135,6 +154,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 			@Override
 			public void propertyChange(PropertyChangeEvent e) {
 				isDoneLoad = true;
+				wait.release();
 			}
 		});
 		editorPane.addHyperlinkListener(this);
@@ -178,14 +198,15 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 
 	/**
 	 * Handler for GO button
+	 * @param url 
 	 */
-	public void goLoad() {
-		myURL = checkURL(txtUrlField.getText());
+	public void goLoad(String url) {
+		myURL = checkURL(url);
 
-		if (!myURL.isEmpty()) {
-			backStack.push(myURL);
-			fwrdStack.clear();
-		}
+//		if (!myURL.isEmpty()) {
+//			backStack.push(myURL);
+//			fwrdStack.clear();
+//		}
 
 		new PageLoader().execute();
 	}
@@ -214,11 +235,45 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	 */
 	private void showPage(String url) {
 		try {
-			setTitle(title + " || " + url);
-			txtUrlField.setText(url);
-			editorPane.setPage(url);
-		} catch (IOException e) {
-			editorPane.setText("Error : " + e);
+//			setTitle(title + " || " + url);
+//			txtUrlField.setText(url);
+//			editorPane.setPage(url);
+			
+			Socket s = new Socket("localhost", 80);
+			InputStream inputStream = s.getInputStream();
+			OutputStream outputStream = s.getOutputStream();
+			
+			DataInputStream reader = new DataInputStream(inputStream);
+			PrintStream writer = new PrintStream(outputStream);
+			writer.println("GET /" + url + " HTTP/1.0");
+			writer.println();
+			writer.flush();
+			
+			
+			String response;
+			while((response = reader.readLine()).length() > 0){
+				if (response.startsWith("HTTP/1.0 404 Not Found")){
+					System.err.println("Not found");
+				}
+				// System.out.println(response);
+			}
+			
+			while((response = reader.readLine()).equals("\0") == false){
+				// System.out.println(response);
+			}
+			
+			
+			//BufferedInputStream bis = new BufferedInputStream(s.getInputStream());
+						
+			s.close();
+		} catch (Exception e) {
+			// e.printStackTrace();
+			// editorPane.setText("Error : " + e);
+		}finally {
+			long doneTime = System.nanoTime();
+			double diff = (doneTime - BasicBrowser.this.startTime) / 1000000000.0;
+			System.out.println(diff);
+			
 		}
 
 		updateButtons();
@@ -260,25 +315,32 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	 * Thread thingy for simultaneous progress bar animation
 	 */
 	class PageLoader extends SwingWorker<String, Void> {
-
+		
 		/**
 		 * Handles page render while the progress bar is moving
 		 */
-		protected String doInBackground() {	
-			if (myURL.isEmpty()) {
-				setTitle(title + " || Invalid URL");
-				editorPane.setText("Error: Invalid URL");
-				isDoneLoad = true;
-			} else {
-				progressBar.setVisible(true);
-				progressBar.setIndeterminate(true);
+		protected String doInBackground() {
+			
+//			if (myURL.isEmpty()) {
+//				setTitle(title + " || Invalid URL");
+//				editorPane.setText("Error: Invalid URL");
+//				isDoneLoad = true;
+//			} else {
+//				progressBar.setVisible(true);
+//				progressBar.setIndeterminate(true);
 				showPage(myURL);
-			}
-
+//			}
+			
 			// for valid page: wait until page has fully rendered
 			// refer to editorPane.addPropertyChangeListener() in initGUI()
-			while (!isDoneLoad)
-				lblStatus.setText("Loading");
+			try {
+				wait.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			
+//			while (!isDoneLoad)
+//				lblStatus.setText("Loading");
 
 			return "Done";
 		}
@@ -287,10 +349,11 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		 * This is called when doInBackground() returns "Done"
 		 */
 		protected void done() {
-			progressBar.setIndeterminate(false);
-			progressBar.setVisible(false);
-			lblStatus.setText("Done");
-			isDoneLoad = false;
+//			progressBar.setIndeterminate(false);
+//			progressBar.setVisible(false);
+//			lblStatus.setText("Done");
+//			isDoneLoad = false;
+			
 		}
 	}
 
