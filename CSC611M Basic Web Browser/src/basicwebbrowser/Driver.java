@@ -1,20 +1,20 @@
 package basicwebbrowser;
 
-import java.awt.EventQueue;
 
 public class Driver {
 
 	public static void main(String[] args) {
-		EventQueue.invokeLater(new Runnable() {
-			public void run() {
-				try {
-					BasicBrowser frame = new BasicBrowser();
-					frame.setVisible(true);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		});
+		
+		int instances = 1;
+		
+		String localFile = "test.html";
+		int port = 80;
+		
+		for (int i = 0; i < instances; i++) {
+			PerformanceThread pt = new PerformanceThread(localFile, port);
+			pt.start();
+
+		}
 	}
 
 }

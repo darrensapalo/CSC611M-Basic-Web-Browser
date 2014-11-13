@@ -11,8 +11,8 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.IOException;
 import java.util.Stack;
+import java.util.concurrent.Semaphore;
 
 import javax.swing.JButton;
 import javax.swing.JEditorPane;
@@ -28,7 +28,7 @@ import javax.swing.event.HyperlinkListener;
 
 import org.apache.commons.validator.routines.UrlValidator;
 
-public class BasicBrowser extends JFrame implements HyperlinkListener {
+public class BrowserGUI extends JFrame implements HyperlinkListener {
 
 	private JButton btnBack;
 	private JButton btnFwrd;
@@ -37,7 +37,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	private JEditorPane editorPane;
 	private JLabel lblStatus;
 	private JProgressBar progressBar;
-
+	private Semaphore wait = new Semaphore(0);
 	/**
 	 * Flag for checking if page has fully rendered
 	 */
@@ -48,11 +48,32 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	private String myURL;
 
 	/**
-	 * Create the frame.
+	 * Set this to true when you want the performance to be measured
 	 */
-	public BasicBrowser() {
-		initGUI();
+	public static boolean PERFORMANCE = true;
+	
+	/**
+	 * Set this to true when you want to show the GUI
+	 */
+	public static boolean GUI = !false;
+
+	private long startTime;
+	private int port;
+
+	/**
+	 * Create the frame.
+	 * @param port 
+	 * @param file 
+	 */
+	public BrowserGUI(String file, int port) {
+		this.port = port;
+		
+		if (GUI){
+			initGUI();
+		}
+		showPage(file);
 	}
+
 
 	private void initGUI() {
 		setTitle(title);
@@ -95,8 +116,8 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		txtUrlField.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyReleased(KeyEvent e) {
-				if (e.getKeyCode() == KeyEvent.VK_ENTER)
-					goLoad();
+				// if (e.getKeyCode() == KeyEvent.VK_ENTER)
+				// goLoad();
 			}
 		});
 		txtUrlField.addFocusListener(new FocusListener() {
@@ -122,7 +143,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		btnGo.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				goLoad();
+				// goLoad();
 			}
 		});
 		pnlMain.add(btnGo);
@@ -131,12 +152,14 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		editorPane.setContentType("text/html");
 		editorPane.setEditable(false);
 		// this is for determining if the page has fully rendered
-		editorPane.addPropertyChangeListener("page", new PropertyChangeListener() {
-			@Override
-			public void propertyChange(PropertyChangeEvent e) {
-				isDoneLoad = true;
-			}
-		});
+		editorPane.addPropertyChangeListener("page",
+				new PropertyChangeListener() {
+					@Override
+					public void propertyChange(PropertyChangeEvent e) {
+						isDoneLoad = true;
+						wait.release();
+					}
+				});
 		editorPane.addHyperlinkListener(this);
 
 		JPanel pnlProgress = new JPanel();
@@ -178,33 +201,36 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 
 	/**
 	 * Handler for GO button
+	 * 
+	 * @param url
 	 */
-	public void goLoad() {
-		myURL = checkURL(txtUrlField.getText());
+	public void goLoad(String url) {
+		myURL = checkURL(url);
 
-		if (!myURL.isEmpty()) {
-			backStack.push(myURL);
-			fwrdStack.clear();
-		}
+		 if (!myURL.isEmpty()) {
+		 backStack.push(myURL);
+		 fwrdStack.clear();
+		 }
 
 		new PageLoader().execute();
 	}
 
 	/**
-	 * Checks if the url is in the proper/valid format. 
-	 * Format is either 'http://www.something.com' or 'https://www.something.com' or 
+	 * Checks if the url is in the proper/valid format. Format is either
+	 * 'http://www.something.com' or 'https://www.something.com' or
 	 * 'http://something.com' or 'https://something.com'
-	 * @param url URL to validate
+	 * 
+	 * @param url
+	 *            URL to validate
 	 * @return url if valid, empty if invalid
 	 */
 	private String checkURL(String url) {
-		
-		// Simple workaround for custom ports -- don't check if valid url
-		if (url.contains("8080"))
-			return url;
-		
-		String[] schemes = {"http","https"};
-		UrlValidator urlValidator = new UrlValidator(schemes);
+		// force it to http or https protocols
+		String[] schemes = { "http", "https" };
+		// UrlValidator.ALLOW_LOCAL_URLS is for allowing localhost or
+		// localmachine
+		UrlValidator urlValidator = new UrlValidator(schemes,
+				UrlValidator.ALLOW_LOCAL_URLS);
 		if (urlValidator.isValid(url))
 			return url;
 		else
@@ -213,18 +239,44 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 
 	/**
 	 * Renders the page into the Basic Web Browser
-	 * @param url URL to set in the title bar
+	 * 
+	 * @param file
+	 *            URL to set in the title bar
 	 */
-	private void showPage(String url) {
+	private void showPage(String file) {
+		if (PERFORMANCE)
+			startTime = System.nanoTime();
+		
 		try {
-			setTitle(title + " || " + url);
-			txtUrlField.setText(url);
-			editorPane.setPage(url);
-		} catch (IOException e) {
-			editorPane.setText("Error : " + e);
+			if (GUI){
+				setTitle(title + " || " + file);
+				txtUrlField.setText(file);
+				editorPane.setPage(file);	
+			}
+			
+			// Read the 'file' from port '80' of the host 'localhost'
+			BrowserSocket browserSocket = new BrowserSocket("localhost", port, file);
+			
+			// Send the HTTP GET request
+			browserSocket.sendRequest();
+			
+			// Close the socket
+			browserSocket.close();
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			if (PERFORMANCE){
+				long doneTime = System.nanoTime();
+				
+				// Duration of how many seconds the page took to load from the server
+				double diff = (doneTime - startTime) / 1000000000.0;
+				System.out.println(diff);
+			}
 		}
-
-		updateButtons();
+		
+		if (GUI)
+			updateButtons();
 	}
 
 	/**
@@ -247,7 +299,7 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 	 */
 	@Override
 	public void hyperlinkUpdate(HyperlinkEvent h) {
-		if(h.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
+		if (h.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
 			myURL = checkURL(h.getURL().toString());
 
 			if (!myURL.isEmpty()) {
@@ -267,21 +319,28 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		/**
 		 * Handles page render while the progress bar is moving
 		 */
-		protected String doInBackground() {	
-			if (myURL.isEmpty()) {
-				setTitle(title + " || Invalid URL");
-				editorPane.setText("Error: Invalid URL");
-				isDoneLoad = true;
-			} else {
-				progressBar.setVisible(true);
-				progressBar.setIndeterminate(true);
-				showPage(myURL);
-			}
+		protected String doInBackground() {
+
+			 if (myURL.isEmpty()) {
+			 setTitle(title + " || Invalid URL");
+			 editorPane.setText("Error: Invalid URL");
+			 isDoneLoad = true;
+			 } else {
+			 progressBar.setVisible(true);
+			 progressBar.setIndeterminate(true);
+			showPage(myURL);
+			 }
 
 			// for valid page: wait until page has fully rendered
 			// refer to editorPane.addPropertyChangeListener() in initGUI()
-			while (!isDoneLoad)
-				lblStatus.setText("Loading");
+			try {
+				wait.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+			// while (!isDoneLoad)
+			// lblStatus.setText("Loading");
 
 			return "Done";
 		}
@@ -290,10 +349,11 @@ public class BasicBrowser extends JFrame implements HyperlinkListener {
 		 * This is called when doInBackground() returns "Done"
 		 */
 		protected void done() {
-			progressBar.setIndeterminate(false);
-			progressBar.setVisible(false);
-			lblStatus.setText("Done");
-			isDoneLoad = false;
+			 progressBar.setIndeterminate(false);
+			 progressBar.setVisible(false);
+			 lblStatus.setText("Done");
+			 isDoneLoad = false;
+
 		}
 	}
 
