@@ -6,6 +6,9 @@ A basic web browser implemented in Java
 A mini exercise for the CSC611M (ADVANOS) class AY2014-2015, Term 2 by Kyle DELA CRUZ, Kristine KALAW,
 Kevin RIVERA, and Darren SAPALO
 
+Reused November 11, 2015
+By Darren Sapalo, Michael Lance, and David Ricafort
+
 ## Changelog
 
 After a year, I (Darren) branched Kristine's work and reduced the code to a simple code snippet that
