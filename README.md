@@ -15,7 +15,7 @@ named cache.
 To change the fetched URL, the app accepts the first command line argument. You can also change the
 default url found in the Driver class.
 
-```
+```Java
 public static final String defaultUrl = "google.com";
 ```
 
@@ -24,13 +24,13 @@ public static final String defaultUrl = "google.com";
 When receiving HTTP 302 or 301 responses, the app blocks while waiting for a content response at the
 following line:
 
-```
-    // blocks at reader.readLine()
-    while ((response = reader.readLine()) != null) {
-        fileWriter.append(response + "\n");
-        fileWriter.flush();
-        System.out.println(response);
-    }
+```Java
+// blocks at reader.readLine()
+while ((response = reader.readLine()) != null) {
+    fileWriter.append(response + "\n");
+    fileWriter.flush();
+    System.out.println(response);
+}
 ```
 
 It seems that the web server does not send any content when the response is a redirect.
